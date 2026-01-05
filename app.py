@@ -46,12 +46,58 @@ except Exception as e:
 # add a compatible __sklearn_tags__ to avoid sklearn utilities failing at runtime.
 try:
     import catboost
-    if model and hasattr(model, '__sklearn_tags__') is False:
-        def _sklearn_tags(self):
-            return {}
-        if hasattr(catboost.CatBoostRegressor, '__sklearn_tags__') is False:
-            catboost.CatBoostRegressor.__sklearn_tags__ = _sklearn_tags
-except Exception:
+    from catboost import CatBoostRegressor
+    
+    # Patch CatBoostRegressor to add sklearn compatibility
+    if not hasattr(CatBoostRegressor, '__sklearn_tags__') or True:
+        try:
+            # Try to use sklearn's Tags if available (sklearn >= 1.6)
+            from sklearn.utils._tags import Tags
+            def _sklearn_tags(self):
+                return Tags(
+                    estimator_type="regressor",
+                    target_tags=None,
+                    transformer_tags=None,
+                    classifier_tags=None,
+                    regressor_tags=None,
+                    array_api_support=False,
+                    no_validation=False,
+                    non_deterministic=False,
+                    requires_fit=True,
+                    _skip_test=True,
+                    input_tags=None,
+                )
+        except ImportError:
+            # Fallback for older sklearn
+            def _sklearn_tags(self):
+                return {
+                    'non_deterministic': False,
+                    'requires_positive_X': False,
+                    'requires_positive_y': False,
+                    'X_types': ['2darray'],
+                    'poor_score': False,
+                    'no_validation': False,
+                    'multioutput': False,
+                    'allow_nan': True,
+                    'stateless': False,
+                    'multilabel': False,
+                    '_skip_test': True,
+                    '_xfail_checks': False,
+                    'multioutput_only': False,
+                    'binary_only': False,
+                    'requires_fit': True,
+                    'preserves_dtype': [],
+                    'requires_y': True,
+                    'pairwise': False,
+                }
+        
+        CatBoostRegressor.__sklearn_tags__ = _sklearn_tags
+        
+        # Also patch the instance if model is already loaded
+        if model is not None and hasattr(model, 'predict'):
+            model.__sklearn_tags__ = lambda: _sklearn_tags(model)
+except Exception as e:
+    print(f"Warning: Could not patch CatBoost sklearn compatibility: {e}")
     pass
 
 # Import routes from the blueprints
